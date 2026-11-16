@@ -1,16 +1,17 @@
 'use strict';
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
+const { once } = require('node:events');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {makeApp}=require('../src/app');
 let server,root,base;
-async function request(route,method='GET',data=null,cookie='') {
-  const response=await fetch(base+route,{method,headers:{...(data!==null?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:data!==null?JSON.stringify(data):undefined});
+async function request(route,method='GET',data=null,cookie='',baseUrl=base) {
+  const response=await fetch(baseUrl+route,{method,headers:{...(data!==null?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:data!==null?JSON.stringify(data):undefined});
   return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};
 }
-async function login(username,password) {const r=await request('/api/login','POST',{username,password});assert.equal(r.status,200);return r.cookie;}
+async function login(username,password,baseUrl=base) {const r=await request('/api/login','POST',{username,password},'',baseUrl);assert.equal(r.status,200);assert.ok(r.cookie);return r.cookie;}
 before(async()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),'semeadores-test-'));const app=makeApp({dbPath:path.join(root,'data.json')});server=app.server;await new Promise(resolve=>server.listen(0,resolve));base=`http://127.0.0.1:${server.address().port}`;});
 after(async()=>{await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
 test('recursos privados exigem sessão',async()=>{const r=await request('/api/encounters');assert.equal(r.status,401);});
@@ -75,4 +76,45 @@ test('período sem chamadas apresenta relatório vazio',async()=>{
   const co=await login('coordenacao','DemoCoordenacao123!');
   const r=await request('/api/report?classId=ipiranga&start=2026-12-01&end=2026-12-31','GET',null,co);
   assert.equal(r.status,200);assert.equal(r.data.encounters,0);assert.equal(r.data.percent,0);
+});
+
+test('chamada continua salva após reiniciar o servidor', async t => {
+  const databaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'semeadores-persistencia-'));
+  const dbPath = path.join(databaseDir, 'database.json');
+  const endpoint = '/api/encounters/art-16/attendance';
+  const marks = { ana: 'presente', bruno: 'ausente', clara: 'presente', davi: 'ausente' };
+  let instance;
+
+  async function closeServer() {
+    if (!instance?.listening) return;
+    const closed = once(instance, 'close');
+    instance.close();
+    await closed;
+  }
+
+  t.after(async () => {
+    try {
+      await closeServer();
+    } finally {
+      fs.rmSync(databaseDir, { recursive: true, force: true });
+    }
+  });
+
+  async function openSession() {
+    ({ server: instance } = makeApp({ dbPath }));
+    await once(instance.listen(0, '127.0.0.1'), 'listening');
+    const url = `http://127.0.0.1:${instance.address().port}`;
+    const cookie = await login('educadora', 'DemoEducadora123!', url);
+    return { url, cookie };
+  }
+
+  const first = await openSession();
+  const saved = await request(endpoint, 'PUT', marks, first.cookie, first.url);
+  assert.equal(saved.status, 200);
+  await closeServer();
+
+  const reopened = await openSession();
+  const response = await request(endpoint, 'GET', null, reopened.cookie, reopened.url);
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data.attendance, marks);
 });
