@@ -6,6 +6,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {makeApp}=require('../src/app');
+const { isValidAttendance } = require('../src/attendance');
 let server,root,base;
 async function request(route,method='GET',data=null,cookie='',baseUrl=base) {
   const response=await fetch(baseUrl+route,{method,headers:{...(data!==null?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{})},body:data!==null?JSON.stringify(data):undefined});
@@ -37,6 +38,28 @@ test('chamada exige exatamente uma marcação por participante',async()=>{
   const invalid=await request('/api/encounters/jud-16/attendance','PUT',{ana:'presente'},ed);
   assert.equal(invalid.status,400);
   assert.match(invalid.data.error,/Marque Presente/);
+});
+test('chamada exige turma com participantes', () => {
+  assert.equal(isValidAttendance({}, []), false);
+});
+test('envios inválidos não sobrescrevem uma chamada salva', async () => {
+  const ed = await login('educadora', 'DemoEducadora123!');
+  const endpoint = '/api/encounters/lei-12/attendance';
+  const before = await request(endpoint, 'GET', null, ed);
+  assert.equal(before.status, 200);
+  const { davi, ...otherMarks } = before.data.attendance;
+  assert.equal(davi, 'presente');
+
+  for (const marks of [
+    { ...otherMarks, desconhecido: 'presente' },
+    { ...before.data.attendance, davi: 'justificado' },
+  ]) {
+    const rejected = await request(endpoint, 'PUT', marks, ed);
+    assert.equal(rejected.status, 400);
+    const after = await request(endpoint, 'GET', null, ed);
+    assert.equal(after.status, 200);
+    assert.deepEqual(after.data.attendance, before.data.attendance);
+  }
 });
 test('salvar e corrigir chamada reflete no resumo',async()=>{
   const ed=await login('educadora','DemoEducadora123!');
