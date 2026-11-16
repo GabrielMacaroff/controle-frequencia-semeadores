@@ -53,6 +53,24 @@ test('salvar e corrigir chamada reflete no resumo',async()=>{
   const updated=await request('/api/report?classId=ipiranga&start=2026-11-10&end=2026-11-16','GET',null,co);
   assert.equal(updated.data.present,7);assert.equal(updated.data.absent,1);
 });
+test('relatório rejeita datas impossíveis e períodos invertidos', async () => {
+  const co = await login('coordenacao', 'DemoCoordenacao123!');
+  const invalidPeriods = [
+    ['2026-11-00', '2026-11-16'],
+    ['2026-02-28', '2026-02-29'],
+    ['2026-11-10', '2026-13-01'],
+    ['2026-11-16', '2026-11-10'],
+  ];
+  for (const [start, end] of invalidPeriods) {
+    const params = new URLSearchParams({ classId: 'ipiranga', start, end });
+    const report = await request(`/api/report?${params}`, 'GET', null, co);
+    assert.equal(report.status, 400);
+    assert.equal(report.data.error, 'Informe turma e período válidos.');
+  }
+
+  const leapDay = await request('/api/report?classId=ipiranga&start=2028-02-29&end=2028-02-29', 'GET', null, co);
+  assert.equal(leapDay.status, 200);
+});
 test('período sem chamadas apresenta relatório vazio',async()=>{
   const co=await login('coordenacao','DemoCoordenacao123!');
   const r=await request('/api/report?classId=ipiranga&start=2026-12-01&end=2026-12-31','GET',null,co);

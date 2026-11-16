@@ -48,6 +48,11 @@ function send(res, status, data, extra = {}) {
   res.end(JSON.stringify(data));
 }
 function parseCookies(header='') { return Object.fromEntries(header.split(';').map(p=>p.trim().split('=')).filter(a=>a.length===2)); }
+function isCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo', 'database.json'), publicDir=path.join(__dirname,'../public') } = {}) {
   const store = storeAt(dbPath);
   const sessions = new Map();
@@ -123,7 +128,9 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
         if (pathname==='/api/report' && req.method==='GET') {
           if (user.role!=='coordenacao') return send(res,403,{error:'Apenas a coordenação pode consultar frequência.'});
           const classId=url.searchParams.get('classId'), start=url.searchParams.get('start'), end=url.searchParams.get('end');
-          if (classId!=='ipiranga' || !/^\d{4}-\d{2}-\d{2}$/.test(start||'') || !/^\d{4}-\d{2}-\d{2}$/.test(end||'') || start>end) return send(res,400,{error:'Informe turma e período válidos.'});
+          if (classId !== 'ipiranga' || !isCalendarDate(start) || !isCalendarDate(end) || start > end) {
+            return send(res, 400, { error: 'Informe turma e período válidos.' });
+          }
           const data=store.read();
           const encounters=data.encounters.filter(e=>e.classId===classId && e.date>=start && e.date<=end && data.calls[e.id]).sort((a,b)=>a.date.localeCompare(b.date));
           const result=data.students.filter(s=>s.classId===classId).map(s=>{
