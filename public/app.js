@@ -56,7 +56,29 @@ async function renderReport(filters={classId:'ipiranga',start:'2026-11-10',end:'
   }));
 }
 async function setActor(data){actor=data;document.getElementById('password').value='';await back();}
-document.getElementById('username').addEventListener('change',e=>document.getElementById('password').value=e.target.value==='educadora'?'DemoEducadora123!':'DemoCoordenacao123!');
+const demoProfile = document.getElementById('username');
+const demoPassword = document.getElementById('password');
+function prefillDemoPassword() {
+  demoPassword.value = demoProfile.value === 'educadora' ? 'DemoEducadora123!' : 'DemoCoordenacao123!';
+}
+demoProfile.addEventListener('change', prefillDemoPassword);
 document.getElementById('loginForm').addEventListener('submit',async ev=>{ev.preventDefault();try{const data=await api('/api/login',{method:'POST',body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})});await setActor(data);}catch(e){alertMessage(e.message,true);}});
-document.getElementById('logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'});actor=null;view.hidden=true;profile.hidden=true;loginPanel.hidden=false;clearMessage();document.getElementById('password').value='';});
+const logoutButton = document.getElementById('logout');
+logoutButton.addEventListener('click', async () => {
+  logoutButton.disabled = true;
+  try {
+    await api('/api/logout', { method: 'POST' });
+    actor = null;
+    view.hidden = true;
+    profile.hidden = true;
+    loginPanel.hidden = false;
+    clearMessage();
+    prefillDemoPassword();
+    demoProfile.focus();
+  } catch (error) {
+    alertMessage('Não foi possível sair. ' + error.message, true);
+  } finally {
+    logoutButton.disabled = false;
+  }
+});
 api('/api/me').then(setActor).catch(()=>{});
