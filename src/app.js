@@ -57,7 +57,20 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
       raw += chunk;
       if (raw.length > 32_768) { const err=new Error('Corpo muito grande'); err.status=413; throw err; }
     }
-    try { return JSON.parse(raw || '{}'); } catch { const err=new Error('JSON inválido'); err.status=400; throw err; }
+    let data;
+    try {
+      data = JSON.parse(raw || '{}');
+    } catch {
+      const err = new Error('JSON inválido');
+      err.status = 400;
+      throw err;
+    }
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      const err = new Error('O corpo da requisição deve ser um objeto JSON.');
+      err.status = 400;
+      throw err;
+    }
+    return data;
   }
   function sessionFrom(req) {
     const token = parseCookies(req.headers.cookie).demo_session;
@@ -100,7 +113,7 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
           if (req.method==='PUT') {
             const submitted=await body(req);
             const names=d.students.filter(s=>s.classId===e.classId).map(x=>x.id);
-            if (!submitted || typeof submitted!=='object' || Array.isArray(submitted) || Object.keys(submitted).length!==names.length || names.some(id=>!['presente','ausente'].includes(submitted[id])) || Object.keys(submitted).some(id=>!names.includes(id))) {
+            if (Object.keys(submitted).length!==names.length || names.some(id=>!['presente','ausente'].includes(submitted[id])) || Object.keys(submitted).some(id=>!names.includes(id))) {
               return send(res,400,{error:'Marque Presente ou Ausente para todos os participantes.'});
             }
             store.update(data=>{data.calls[encounterId]={...submitted};});

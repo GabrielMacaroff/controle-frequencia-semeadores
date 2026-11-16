@@ -15,6 +15,17 @@ before(async()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),'semeadores-test-'));
 after(async()=>{await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});});
 test('recursos privados exigem sessão',async()=>{const r=await request('/api/encounters');assert.equal(r.status,401);});
 test('login recusa senha inválida',async()=>{const r=await request('/api/login','POST',{username:'educadora',password:'errada'});assert.equal(r.status,401);});
+test('login recusa corpos JSON que não são objetos', async () => {
+  for (const body of ['null', '[]', '42']) {
+    const response = await fetch(`${base}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /objeto JSON/);
+  }
+});
 test('controle de acesso por função',async()=>{
   const ed=await login('educadora','DemoEducadora123!'),co=await login('coordenacao','DemoCoordenacao123!');
   assert.equal((await request('/api/report?classId=ipiranga&start=2026-11-10&end=2026-11-16','GET',null,ed)).status,403);
