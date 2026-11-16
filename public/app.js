@@ -12,19 +12,35 @@ async function api(path,options={}){
 function alertMessage(message,isError=false){live.hidden=false;live.textContent=message;live.className='status'+(isError?' error':'');live.focus?.();}
 function clearMessage(){live.hidden=true;live.textContent='';}
 function render(html){clearMessage();view.innerHTML=html;view.hidden=false;loginPanel.hidden=true;profile.hidden=false;role.textContent=actor.display;main.focus();}
-function back(){if(actor.role==='educadora')renderMenu();else renderReport();}
 async function renderMenu(){
+  const currentActor = actor;
   const meetings=await api('/api/encounters');
+  if (actor !== currentActor) return;
   if(actor.role!=='educadora')return renderReport();
   render(`<div class="topline"><div><h1>Menu inicial — Chamadas</h1><p>Bem-vinda! Selecione a oficina para registrar ou corrigir a frequência.</p></div><span class="badged">Perfil: Educadora</span></div><section><h2>Encontros da Turma Ipiranga</h2><div class="tilegrid">${meetings.map(e=>`<article class="tile"><h2>${escapeHtml(e.workshop)}</h2><div>${escapeHtml(e.className)}</div><div class="meta">${fmt(e.date)} · ${e.time}</div><span class="badged ${e.status==='Concluída'?'done':''}">${e.status}</span><button data-meeting="${e.id}" class="primary">${e.status==='Concluída'?'Reabrir chamada':'Abrir chamada'}</button></article>`).join('')}</div></section>`);
-  view.querySelectorAll('[data-meeting]').forEach(btn=>btn.addEventListener('click',()=>renderAttendance(btn.dataset.meeting)));
+  view.querySelectorAll('[data-meeting]').forEach(button => {
+    button.addEventListener('click', () => {
+      renderAttendance(button.dataset.meeting).catch(error => {
+        if (actor !== currentActor || !button.isConnected) return;
+        alertMessage('Não foi possível abrir a chamada. ' + error.message, true);
+      });
+    });
+  });
 }
 async function renderAttendance(id){
+  const currentActor = actor;
   const d=await api(`/api/encounters/${encodeURIComponent(id)}/attendance`);
+  if (actor !== currentActor) return;
   activeEncounter=id;attendanceDraft={...d.attendance};
   const e=d.encounter;
   render(`<div class="topline"><div><h1>Registrar chamada — ${escapeHtml(e.workshop)}</h1><p>${escapeHtml(e.className)} · ${fmt(e.date)} · ${escapeHtml(e.time)}</p></div><button id="backBtn">Voltar ao menu</button></div><section class="panel"><p class="warning">Selecione Presente ou Ausente para cada participante antes de salvar.</p><div id="roster">${d.students.map(s=>`<div class="student"><strong>${escapeHtml(s.name)}</strong><div class="choices" role="group" aria-label="Presença de ${escapeHtml(s.name)}"><button class="choice present" data-student="${s.id}" data-choice="presente" aria-pressed="${attendanceDraft[s.id]==='presente'}">✓ Presente</button><button class="choice absent" data-student="${s.id}" data-choice="ausente" aria-pressed="${attendanceDraft[s.id]==='ausente'}">✕ Ausente</button></div></div>`).join('')}</div><div class="toolbar"><button id="saveCall" class="primary">Salvar chamada</button><span id="counter" aria-live="polite"></span></div></section>`);
-  document.getElementById('backBtn').addEventListener('click',renderMenu);
+  const backButton = document.getElementById('backBtn');
+  backButton.addEventListener('click', () => {
+    renderMenu().catch(error => {
+      if (actor !== currentActor || !backButton.isConnected) return;
+      alertMessage('Não foi possível voltar ao menu. ' + error.message, true);
+    });
+  });
   const count=()=>document.getElementById('counter').textContent=`${Object.keys(attendanceDraft).length} de ${d.students.length} participantes marcados`;
   count();
   document.querySelectorAll('[data-student]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -55,7 +71,12 @@ async function renderReport(filters={classId:'ipiranga',start:'2026-11-10',end:'
     document.getElementById('details').innerHTML=`<div class="history"><h2>Histórico de ${escapeHtml(p.name)}</h2>${p.history.map(h=>`<p>${fmt(h.date)} · ${escapeHtml(h.time)} · ${escapeHtml(h.workshop)} — <strong>${h.situation==='presente'?'✓ Presente':'✕ Ausente'}</strong></p>`).join('')}</div>`;
   }));
 }
-async function setActor(data){actor=data;document.getElementById('password').value='';await back();}
+async function setActor(data) {
+  actor = data;
+  if (actor.role === 'educadora') await renderMenu();
+  else await renderReport();
+  if (actor === data) document.getElementById('password').value = '';
+}
 const demoProfile = document.getElementById('username');
 const demoPassword = document.getElementById('password');
 function prefillDemoPassword() {
