@@ -1,6 +1,27 @@
 'use strict';
 const main=document.getElementById('main'),view=document.getElementById('view'),loginPanel=document.getElementById('loginPanel'),profile=document.getElementById('profile'),role=document.getElementById('role'),live=document.getElementById('live');
-let actor=null, attendanceDraft={},activeEncounter=null;
+let actor=null, activeAttendance=null;
+function hasUnsavedAttendance() {
+  if (!activeAttendance) return false;
+  const { draft, saved } = activeAttendance;
+  return Object.keys(draft).length !== Object.keys(saved).length
+    || Object.entries(draft).some(([id, mark]) => mark !== saved[id]);
+}
+function confirmDiscardAttendance() {
+  return !hasUnsavedAttendance()
+    || window.confirm('Existem marcações não salvas. Deseja sair da chamada e descartar essas alterações?');
+}
+function lockAttendanceControls() {
+  const controls = [document.getElementById('logout'), ...view.querySelectorAll('[data-student], #backBtn')];
+  const previous = controls.map(control => ({ control, disabled: control.disabled }));
+  controls.forEach(control => { control.disabled = true; });
+  return () => previous.forEach(({ control, disabled }) => { control.disabled = disabled; });
+}
+window.addEventListener('beforeunload', event => {
+  if (!hasUnsavedAttendance()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 const fmt=(d)=>d.split('-').reverse().join('/');
 const escapeHtml=(s)=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path,options={}){
@@ -17,6 +38,7 @@ async function renderMenu(){
   const meetings=await api('/api/encounters');
   if (actor !== currentActor) return;
   if(actor.role!=='educadora')return renderReport();
+  activeAttendance = null;
   render(`<div class="topline"><div><h1>Menu inicial — Chamadas</h1><p>Bem-vinda! Selecione a oficina para registrar ou corrigir a frequência.</p></div><span class="badged">Perfil: Educadora</span></div><section><h2>Encontros da Turma Ipiranga</h2><div class="tilegrid">${meetings.map(e=>`<article class="tile"><h2>${escapeHtml(e.workshop)}</h2><div>${escapeHtml(e.className)}</div><div class="meta">${fmt(e.date)} · ${e.time}</div><span class="badged ${e.status==='Concluída'?'done':''}">${e.status}</span><button data-meeting="${e.id}" class="primary">${e.status==='Concluída'?'Reabrir chamada':'Abrir chamada'}</button></article>`).join('')}</div></section>`);
   view.querySelectorAll('[data-meeting]').forEach(button => {
     button.addEventListener('click', () => {
@@ -31,31 +53,44 @@ async function renderAttendance(id){
   const currentActor = actor;
   const d=await api(`/api/encounters/${encodeURIComponent(id)}/attendance`);
   if (actor !== currentActor) return;
-  activeEncounter=id;attendanceDraft={...d.attendance};
+  const state = { draft: { ...d.attendance }, saved: { ...d.attendance } };
+  activeAttendance = state;
   const e=d.encounter;
-  render(`<div class="topline"><div><h1>Registrar chamada — ${escapeHtml(e.workshop)}</h1><p>${escapeHtml(e.className)} · ${fmt(e.date)} · ${escapeHtml(e.time)}</p></div><button id="backBtn">Voltar ao menu</button></div><section class="panel"><p class="warning">Selecione Presente ou Ausente para cada participante antes de salvar.</p><div id="roster">${d.students.map(s=>`<div class="student"><strong>${escapeHtml(s.name)}</strong><div class="choices" role="group" aria-label="Presença de ${escapeHtml(s.name)}"><button class="choice present" data-student="${s.id}" data-choice="presente" aria-pressed="${attendanceDraft[s.id]==='presente'}">✓ Presente</button><button class="choice absent" data-student="${s.id}" data-choice="ausente" aria-pressed="${attendanceDraft[s.id]==='ausente'}">✕ Ausente</button></div></div>`).join('')}</div><div class="toolbar"><button id="saveCall" class="primary">Salvar chamada</button><span id="counter" aria-live="polite"></span></div></section>`);
+  render(`<div class="topline"><div><h1>Registrar chamada — ${escapeHtml(e.workshop)}</h1><p>${escapeHtml(e.className)} · ${fmt(e.date)} · ${escapeHtml(e.time)}</p></div><button id="backBtn">Voltar ao menu</button></div><section class="panel"><p class="warning">Selecione Presente ou Ausente para cada participante antes de salvar.</p><div id="roster">${d.students.map(s=>`<div class="student"><strong>${escapeHtml(s.name)}</strong><div class="choices" role="group" aria-label="Presença de ${escapeHtml(s.name)}"><button class="choice present" data-student="${s.id}" data-choice="presente" aria-pressed="${state.draft[s.id]==='presente'}">✓ Presente</button><button class="choice absent" data-student="${s.id}" data-choice="ausente" aria-pressed="${state.draft[s.id]==='ausente'}">✕ Ausente</button></div></div>`).join('')}</div><div class="toolbar"><button id="saveCall" class="primary">Salvar chamada</button><span id="counter" aria-live="polite"></span></div></section>`);
   const backButton = document.getElementById('backBtn');
   backButton.addEventListener('click', () => {
+    if (!confirmDiscardAttendance()) return;
+    const unlock = lockAttendanceControls();
     renderMenu().catch(error => {
       if (actor !== currentActor || !backButton.isConnected) return;
       alertMessage('Não foi possível voltar ao menu. ' + error.message, true);
-    });
+    }).finally(unlock);
   });
-  const count=()=>document.getElementById('counter').textContent=`${Object.keys(attendanceDraft).length} de ${d.students.length} participantes marcados`;
+  const count = () => {
+    const pending = hasUnsavedAttendance() ? ' · Alterações não salvas' : '';
+    document.getElementById('counter').textContent = `${Object.keys(state.draft).length} de ${d.students.length} participantes marcados${pending}`;
+  };
   count();
   document.querySelectorAll('[data-student]').forEach(btn=>btn.addEventListener('click',()=>{
-    attendanceDraft[btn.dataset.student]=btn.dataset.choice;
+    state.draft[btn.dataset.student]=btn.dataset.choice;
     document.querySelectorAll(`[data-student="${btn.dataset.student}"]`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.choice===btn.dataset.choice)));
     count();
   }));
   const save=async()=>{
-    if(Object.keys(attendanceDraft).length!==d.students.length){alertMessage('Marque Presente ou Ausente para todos os participantes.',true);return;}
+    if(Object.keys(state.draft).length!==d.students.length){alertMessage('Marque Presente ou Ausente para todos os participantes.',true);return;}
+    const submitted = { ...state.draft };
     const btn=document.getElementById('saveCall');btn.disabled=true;
     try{
-      const result=await api(`/api/encounters/${id}/attendance`,{method:'PUT',body:JSON.stringify(attendanceDraft)});
-      alertMessage(`${result.message}. Todas as marcações foram confirmadas pelo servidor.`);
+      const result=await api(`/api/encounters/${id}/attendance`,{method:'PUT',body:JSON.stringify(submitted)});
+      if (actor !== currentActor || activeAttendance !== state || !btn.isConnected) return;
+      state.saved = submitted;
+      count();
+      alertMessage(hasUnsavedAttendance()
+        ? 'Chamada salva. Há novas alterações que ainda precisam ser salvas.'
+        : `${result.message}. Todas as marcações foram confirmadas pelo servidor.`);
       btn.textContent='Atualizar chamada';
     } catch(e){
+      if (actor !== currentActor || activeAttendance !== state || !btn.isConnected) return;
       alertMessage('Salvamento não confirmado. Tente novamente quando a conexão voltar. '+e.message,true);
       btn.textContent='Tentar novamente';
     } finally{btn.disabled=false;}
@@ -86,10 +121,12 @@ demoProfile.addEventListener('change', prefillDemoPassword);
 document.getElementById('loginForm').addEventListener('submit',async ev=>{ev.preventDefault();try{const data=await api('/api/login',{method:'POST',body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})});await setActor(data);}catch(e){alertMessage(e.message,true);}});
 const logoutButton = document.getElementById('logout');
 logoutButton.addEventListener('click', async () => {
-  logoutButton.disabled = true;
+  if (!confirmDiscardAttendance()) return;
+  const unlock = lockAttendanceControls();
   try {
     await api('/api/logout', { method: 'POST' });
     actor = null;
+    activeAttendance = null;
     view.hidden = true;
     profile.hidden = true;
     loginPanel.hidden = false;
@@ -99,7 +136,7 @@ logoutButton.addEventListener('click', async () => {
   } catch (error) {
     alertMessage('Não foi possível sair. ' + error.message, true);
   } finally {
-    logoutButton.disabled = false;
+    unlock();
   }
 });
 api('/api/me').then(setActor).catch(()=>{});
