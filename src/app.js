@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { isValidAttendance } = require('./attendance');
 
 const DEMO_USERS = {
   educadora: { password: 'DemoEducadora123!', role: 'educadora', display: 'Educadora' },
@@ -109,20 +110,26 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
         }
         const match = pathname.match(/^\/api\/encounters\/([a-z0-9-]+)\/attendance$/);
         if (match) {
-          if (user.role!=='educadora') return send(res,403,{error:'Apenas educadoras podem acessar chamadas.'});
+          if (user.role !== 'educadora') return send(res, 403, { error: 'Apenas educadoras podem acessar chamadas.' });
           const encounterId = match[1];
-          const d = store.read();
-          const e=d.encounters.find(x=>x.id===encounterId);
-          if (!e) return send(res,404,{error:'Encontro não encontrado.'});
-          if (req.method==='GET') return send(res,200,{encounter:e,students:d.students.filter(s=>s.classId===e.classId),attendance:d.calls[encounterId]||{}});
-          if (req.method==='PUT') {
-            const submitted=await body(req);
-            const names=d.students.filter(s=>s.classId===e.classId).map(x=>x.id);
-            if (Object.keys(submitted).length!==names.length || names.some(id=>!['presente','ausente'].includes(submitted[id])) || Object.keys(submitted).some(id=>!names.includes(id))) {
-              return send(res,400,{error:'Marque Presente ou Ausente para todos os participantes.'});
+          const data = store.read();
+          const encounter = data.encounters.find(entry => entry.id === encounterId);
+          if (!encounter) return send(res, 404, { error: 'Encontro não encontrado.' });
+          const students = data.students.filter(student => student.classId === encounter.classId);
+
+          if (req.method === 'GET') {
+            return send(res, 200, { encounter, students, attendance: data.calls[encounterId] || {} });
+          }
+          if (req.method === 'PUT') {
+            const submitted = await body(req);
+            if (students.length === 0) {
+              return send(res, 400, { error: 'Esta turma não tem participantes para registrar a chamada.' });
             }
-            store.update(data=>{data.calls[encounterId]={...submitted};});
-            return send(res,200,{message:'Chamada salva',encounterId});
+            if (!isValidAttendance(submitted, students)) {
+              return send(res, 400, { error: 'Marque Presente ou Ausente para todos os participantes.' });
+            }
+            store.update(current => { current.calls[encounterId] = submitted; });
+            return send(res, 200, { message: 'Chamada salva', encounterId });
           }
         }
         if (pathname==='/api/report' && req.method==='GET') {
