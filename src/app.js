@@ -5,29 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { isValidAttendance } = require('./attendance');
-
-const DEMO_USERS = {
-  educadora: { password: 'DemoEducadora123!', role: 'educadora', display: 'Educadora' },
-  coordenacao: { password: 'DemoCoordenacao123!', role: 'coordenacao', display: 'Coordenação' },
-};
-const INITIAL_DATA = {
-  students: [
-    { id: 'ana', name: 'Ana M.', classId: 'ipiranga' },
-    { id: 'bruno', name: 'Bruno R.', classId: 'ipiranga' },
-    { id: 'clara', name: 'Clara S.', classId: 'ipiranga' },
-    { id: 'davi', name: 'Davi L.', classId: 'ipiranga' },
-  ],
-  encounters: [
-    { id: 'jud-16', classId: 'ipiranga', className: 'Turma Ipiranga', workshop: 'Judô', date: '2026-11-16', time: '14:00' },
-    { id: 'art-16', classId: 'ipiranga', className: 'Turma Ipiranga', workshop: 'Arte', date: '2026-11-16', time: '16:00' },
-    { id: 'lei-12', classId: 'ipiranga', className: 'Turma Ipiranga', workshop: 'Leitura', date: '2026-11-12', time: '14:00' },
-  ],
-  calls: {
-    'lei-12': { ana: 'presente', bruno: 'ausente', clara: 'presente', davi: 'presente' },
-  },
-};
-
-function cloneInitialData() { return structuredClone(INITIAL_DATA); }
+const { DEMO_USERS, cloneInitialData } = require('./seed');
 function storeAt(dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   if (!fs.existsSync(dbPath)) fs.writeFileSync(dbPath, JSON.stringify(cloneInitialData(), null, 2));
@@ -87,6 +65,10 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
       const url = new URL(req.url, 'http://localhost');
       const { pathname } = url;
       if (pathname.startsWith('/api/')) {
+        if (pathname === '/api/health' && req.method === 'GET') {
+          store.read();
+          return send(res, 200, { status: 'UP', database: 'UP', storage: 'JSON local', version: '0.2.0', checkedAt: new Date().toISOString() });
+        }
         if (pathname === '/api/login' && req.method === 'POST') {
           const data = await body(req);
           const username = typeof data.username==='string' ? data.username.toLowerCase().trim() : '';
@@ -151,8 +133,8 @@ function makeApp({ dbPath = path.join(os.tmpdir(), 'semeadores-frequencia-demo',
         return send(res,404,{error:'Recurso não encontrado.'});
       }
       if (req.method!=='GET') return send(res,405,{error:'Método não permitido.'});
-      let file = pathname==='/'? 'index.html' : pathname.replace(/^\//,'');
-      if (!['index.html','app.js','styles.css'].includes(file)) return send(res,404,{error:'Página não encontrada.'});
+      let file = pathname === '/' ? 'index.html' : pathname === '/status' ? 'status.html' : pathname.replace(/^\//, '');
+      if (!['index.html','app.js','styles.css','status.html','status.js'].includes(file)) return send(res,404,{error:'Página não encontrada.'});
       const content = fs.readFileSync(path.join(publicDir,file));
       res.writeHead(200,{'Content-Type':mime[path.extname(file)],'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});
       return res.end(content);

@@ -13,6 +13,8 @@ jobs:
         with:
           node-version: '22'
       - name: Instalar dependências
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
       - name: Verificar sintaxe e executar testes
         run: npm run check
+      - name: Preparar artefato de nuvem
+        run: npm run build

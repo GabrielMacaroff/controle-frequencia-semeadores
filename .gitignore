@@ -3,5 +3,7 @@ node_modules/
 .env.*
 data/
 coverage/
+dist/
+.wrangler/
 *.log
 .DS_Store

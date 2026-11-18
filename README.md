@@ -6,8 +6,8 @@ MVP acadêmico para registro de presença nas oficinas e consulta de frequência
 
 ## Requisitos
 
-- Node.js 22 ou superior.
-- Não requer bibliotecas externas (usa módulos nativos do Node.js).
+- Node.js 22.13 ou superior.
+- A execução local usa módulos nativos. A preparação do artefato de nuvem usa esbuild, e as migrações D1 são geradas com Drizzle Kit.
 
 ## Executar
 
@@ -42,6 +42,19 @@ npm run check
 ```
 
 Os testes verificam autorização, login inválido, validação da chamada, gravação, correção, relatório e período sem dados. A configuração em `.github/workflows/ci.yml` executa os testes em pushes e pull requests da branch `main`.
+
+## Publicação e monitoramento
+
+A versão de nuvem usa um Cloudflare Worker publicado pelo Sites, com chamadas e sessões persistidas em Cloudflare D1. A API preserva os caminhos usados pela interface. As contas e os participantes continuam demonstrativos.
+
+- Aplicação: https://controle-frequencia-semeadores.macaroff.chatgpt.site
+- Painel de disponibilidade: https://controle-frequencia-semeadores.macaroff.chatgpt.site/status
+- Endpoint de saúde: `/api/health`, que responde `UP` e HTTP 200 após consultar o banco, ou `DOWN` e HTTP 503 em caso de falha.
+- Verificação externa: `.github/workflows/monitor.yml`, agendada aproximadamente a cada 30 minutos e disponível também para execução manual. Uma falha deixa o job vermelho e registra `DOWN` no resumo da execução.
+
+O painel consulta o endpoint de saúde a cada 60 segundos enquanto estiver aberto. As verificações do GitHub Actions continuam agendadas quando a página está fechada. Os horários do agendador podem sofrer atrasos da plataforma.
+
+Para preparar o artefato, execute `npm ci --ignore-scripts` e `npm run build`. O código de nuvem está em `src/cloud-worker.mjs`, a declaração do banco em `db/schema.ts` e as migrações em `drizzle/`. As sessões em nuvem expiram no servidor após duas horas, e o banco armazena somente o hash do token de sessão.
 
 ## Estrutura
 

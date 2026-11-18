@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitoramento | Semeadores do Bem</title>
+  <link rel="stylesheet" href="/styles.css"><script src="/status.js" defer></script>
+</head>
+<body>
+  <header class="masthead"><div class="brand"><div><strong>Núcleo Semeadores do Bem</strong><small>Monitoramento de disponibilidade</small></div></div></header>
+  <main class="container">
+    <h1>Disponibilidade do MVP</h1>
+    <p>Verificação ao vivo da aplicação e do banco de dados em nuvem.</p>
+    <section class="panel" aria-live="polite"><h2 id="healthStatus">Verificando serviço…</h2><p id="healthMessage">Consultando o endpoint de saúde.</p><p id="checkedAt"></p></section>
+    <div class="metrics"><div class="tile"><strong id="httpStatus">—</strong>HTTP</div><div class="tile"><strong id="databaseStatus">—</strong><span id="storageName">Armazenamento</span></div><div class="tile"><strong id="responseTime">—</strong>Tempo de resposta</div></div>
+    <section class="panel"><h2>Verificação externa</h2><p>O GitHub Actions consulta este site e seu endpoint de saúde aproximadamente a cada 30 minutos. Uma falha deixa a execução vermelha e registra DOWN no resumo.</p><p><a href="https://github.com/GabrielMacaroff/controle-frequencia-semeadores/actions/workflows/monitor.yml">Consultar histórico do monitoramento no GitHub</a></p><p>Este painel consulta a saúde do serviço a cada 60 segundos enquanto estiver aberto.</p><button id="checkNow">Verificar agora</button></section>
+    <p><a href="/">Abrir o sistema de frequência</a></p>
+  </main>
+</body>
+</html>
